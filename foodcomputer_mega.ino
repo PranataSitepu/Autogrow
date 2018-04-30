@@ -4,15 +4,15 @@
 #include <OneWire.h>                    // Library EC
 
 /* INISIALISASI PIN AKTUATOR DAN SENSOR */
-#define relayFanIn  13                  // Relay 1 IN1
-#define relayFanOut  12                 // Relay 1 IN2
-#define ledPutih 11                     // Relay 1 IN3
-#define relayHumidifier  10             // Relay 1 IN4
-#define pumpFlush 9                     // Relay 2 IN1 pompa flush nutrisi
-#define pumpAc 8                        // Relay 2 IN2 pompa Asam
-#define pumpBa 7                        // Relay 2 IN3 pompa Basa
-#define relayHeater  6                  // Relay 2 IN4
-#define relayPump  5                    // relay tunggal
+#define relayPumpAB  13                 // Relay 1 IN4
+#define relayHumidifier  12             // Relay 1 IN3
+#define relayHeater 11                  // Relay 1 IN2
+#define relayLED  10                    // Relay 1 IN1
+#define relayFanIn 9                    // Relay 2 IN4
+#define relayFanOut 8                   // Relay 2 IN3
+#define ledPutih 7                      // Relay 2 IN2
+#define relayPeltier  6                 // Relay 2 IN1
+
 #define LED  4                          // LED grow dari IRF540
 #define DHT22_PIN 3                     // Sensor Suhu dan Kelembaban
 // pin 14 dan 15 (TX3 dan RX3) untuk komunikasi serial
@@ -31,11 +31,10 @@
 /* VARIABEL */
 byte ECsensorPin = A2;                  // pin A2 untuk sensor EC
 byte DS18B20_Pin = 2;                   // pin 2 untuk DS18B20
-int bright;                             // variabel brightness LEDGrow menggunakan PWM
+int bright= 0;                          // variabel brightness LEDGrow menggunakan PWM
 unsigned long currentMillis = 0;        // nilai milisekon sekarang
 unsigned long previousMillis = 0;       // nilai milisekon sebelumnya
 unsigned long previousLED = 0;        	// nilai milisekon penyinaran sebelumnya
-unsigned long previousFoto = 0;         // nilai milisekon pengambilan foto sebelumnya
 float suhuIn;                           // variabel penyimpanan input suhu
 int kelembabanIn;                       // variabel penyimpanan input kelembaban
 int co2In;                              // variabel penyimpanan input CO2
@@ -73,11 +72,10 @@ String stateFanIn;                      // kondisi fan in untuk notifikasi
 String stateFanOut;                     // kondisi fan out untuk notifikasi
 String stateHeater;                     // kondisi heater untuk notifikasi
 String stateHumidifier;                 // kondisi humidifier untuk notifikasi
+String statePeltier;                    // kondisi peltier untuk notifikasi
 String statePump;                       // kondisi pompa nutrisi untuk notifikasi
-String statePumpAc;                     // kondisi pompa asam untuk notifikasi
-String statePumpBa;                     // kondisi pompa basa untuk notifikasi
+String statePumpAB;                     // kondisi pompa asam untuk notifikasi
 String stateLED;                        // kondisi led grow untuk notifikasi
-String statePumpFlush;                  // kondisi pompa flush balik untuk notifikasi
 String levelAir;                        // kondisi tinggi air dalam tanki untuk notifikasi
 int sensorValue = 0;                    // variable untuk menampung nilai baca dari sensor dalam bentuk integer
 float tinggiAir = 0;                    // variabel untuk menampung ketinggian air
@@ -90,21 +88,21 @@ OneWire ds(DS18B20_Pin);                // digital pin 2 untuk sensor intensitas
 
 void setup()
 {
-  // Untuk komunikasi serial
+  // UNTUK KOMUNIKASI SERIAL
   Serial.begin(115200);                 // komunikasi serial ke raspi
   Serial3.begin(115200);                // komunikasi serial ke nodeMCU
 
-  // pengaturan sensor CO2 (MQ135)
+  // PENGATURAN SENSOR CO2 (MQ135)
   pinMode(analogInput, INPUT);
   //pinMode(digitalTrigger, INPUT);
 
-  // pengaturan sensor temperatur dan kelembaban (DHT22)
+  // PENGATURAN SENSOR TEMPERATUR DAN KELEMBABAN (DHT22)
   dht.begin();
 
-  // pengaturan sensor intensitas (BH1750)
+  // PENGATURAN SENSOR INTENSITAS (BH1750)
   lightMeter.begin();
 
-  // pengaturan sensor EC
+  // PENGATURAN SENSOR EC
   for (byte thisReading = 0; thisReading < numReadings; thisReading++)
     readings[thisReading] = 1;
   TempProcess(StartConvert);   //let the DS18B20 start the convert
@@ -112,39 +110,37 @@ void setup()
   printTime=millis();
   tempSampleTime=millis();
   
-  // pengaturan sensor pH (SEN0161)
+  // PENGATURAN SENSOR PH (SEN0161)
   pinMode(sensorPin, INPUT);
 
-  // pengaturan relay
+  // PENGATURAN PIN OUTPUT DAN RELAY
   pinMode(LED, OUTPUT);
   pinMode(relayHeater, OUTPUT);
   pinMode(relayHumidifier, OUTPUT);
   pinMode(relayFanIn, OUTPUT);
   pinMode(relayFanOut, OUTPUT);
-  pinMode(relayPump, OUTPUT);
-  pinMode(pumpAc, OUTPUT);
-  pinMode(pumpBa, OUTPUT);
-  pinMode(pumpFlush, OUTPUT);
+  pinMode(relayLED, OUTPUT);
+  pinMode(relayPeltier, OUTPUT);
+  pinMode(relayPumpAB, OUTPUT);
   pinMode(ledPutih, OUTPUT);
 
   // nilai awal sebelum ada input pengguna
-  bright = 180;                   // nilai pwm intensitas cahaya
   suhuIn = 24;                    // nilai suhu
   kelembabanIn = 70;              // nilai kelembaban
-  co2In = 660;                    // nilai CO2
-  intensitasIn = 850;             // nilai intensitas
-  phIn = 7.00;                    // nilai pH
-  nutrisiIn = 1.7;                // nilai EC
-  waktusiramIn = 60000;         // setiap 20 menit sekali
+  co2In = 900;                    // nilai CO2
+  intensitasIn = 900;             // nilai intensitas
+  phIn = 6.50;                    // nilai pH
+  nutrisiIn = 1.2;                // nilai EC
+  waktusiramIn = 60000;           // setiap 20 menit sekali
   penyinaranIn = 43200000;        // 12 jam nyala, 12 jam mati
   
   digitalWrite(relayHeater, HIGH);
   digitalWrite(relayHumidifier, HIGH);
   digitalWrite(relayFanIn, HIGH);
   digitalWrite(relayFanOut, HIGH);
-  digitalWrite(relayPump, HIGH);
-  digitalWrite(pumpAc, HIGH);
-  digitalWrite(pumpBa, HIGH);
+  digitalWrite(relayLED, HIGH);
+  digitalWrite(relayPeltier, HIGH);
+  digitalWrite(relayPumpAB, HIGH);
   digitalWrite(ledPutih, HIGH);
 }
 
@@ -206,18 +202,11 @@ void loop()
     penyinaranIn = penyinaranIn*3600*1000;
     Serial.print("inputilamapenyinaran = "); Serial.println(penyinaranIn);
     p = NULL;
-    /***********parameter pompa***********/
-    str = strtok (p, " ");
-    //Serial.println(str);
-    int temp = atoi(str);
-    waktusiramIn = temp * 60 * 1000;
-    Serial.print("inputwaktusiram = "); Serial.println(waktusiramIn);
-    p = NULL;
   }
 
   /******************************* PEMBACAAN KONDISI AKTUAL ***********************************/
 
-  // pembacaan kondisi suhu dan kelembaban-----------------------------------------
+  // PEMBACAA SUHU DAN KELEMBABAN-----------------------------------------
   dht.readHumidity();
   dht.readTemperature();
 
@@ -228,7 +217,7 @@ void loop()
   int co2ppm = 0;                              		//int for calculated ppm
   int average = 0;                              	//int for averaging
 
-  // pembacaan kondisi C02----------------------------------------------------------
+  // PEMBACAAN KONDISI C02----------------------------------------------------------
   for (int x = 0; x < 5; x++)                   	//melakukan sampling sebanyak 5 kali
   {
     co2now[x] = analogRead(analogInput);
@@ -242,12 +231,10 @@ void loop()
   co2comp = co2raw - co2Zero;                   	//get compensated value
   co2ppm = map(co2comp, 0, 1023, 400, 5000);    	//map value for atmospheric levels
 
-  // pembacaan kondisi intensitas cahaya--------------------------------------------
+  // PEMBACAAN KONDISI INTENSITAS CAHAYA--------------------------------------------
   uint16_t lux = lightMeter.readLightLevel();
-  //int minValue = 300;
-  //int maxValue = 500;
-
-  // pembacaan kondisi nutrisi------------------------------------------------------
+  
+  // PEMBACAAN KONDISI NUTRISI------------------------------------------------------
   // Melakukan sampling nilai analog dan mengambil rata-rata
   if(millis()-AnalogSampleTime>=AnalogSampleInterval)  
   {
@@ -282,14 +269,6 @@ void loop()
   {
     printTime=millis();
     averageVoltage=AnalogAverage*(float)5000/1024;
-    //Serial.print("Analog value:");
-    //Serial.print(AnalogAverage);   //analog average,from 0 to 1023
-    //Serial.print("    Voltage:");
-    //Serial.print(averageVoltage);  //millivolt average,from 0mv to 4995mV
-    //Serial.print("mV    ");
-    //Serial.print("temp:");
-    //Serial.print(temperature);    //current temperature
-    //Serial.print("^C     EC:");
     
     float TempCoefficient=1.0+0.0185*(temperature-25.0);    //temperature compensation formula: fFinalResult(25^C) = fFinalResult(current)/(1.0+0.0185*(fTP-25.0));
     float CoefficientVoltage=(float)averageVoltage/TempCoefficient;   
@@ -305,11 +284,9 @@ void loop()
       else if(CoefficientVoltage<=1457)ECcurrent=7.98*CoefficientVoltage-127;  //3ms/cm<EC<=10ms/cm
       else ECcurrent=7.1*CoefficientVoltage+2278;                           //10ms/cm<EC<20ms/cm
       ECcurrent/=1000;    //convert us/cm to ms/cm
-//      Serial.print(ECcurrent,2);  //two decimal
-//      Serial.println("ms/cm");
     }
   }
-  // pembacaan kondisi pH-----------------------------------------------------------
+  // PEMBACAAN KONDISI PH-----------------------------------------------------------
   for (int i = 0; i < 10; i++)                  	// mengambil 10 nilai sampel
   {
     buf[i] = analogRead(sensorPin);
@@ -330,10 +307,10 @@ void loop()
   avgValue = 0;
   for (int i = 2; i < 8; i++)                 		// mengambil rata-rata dari 6 nilai di tengah
     avgValue += buf[i];
-  float phValue = (float)avgValue * 5.0 / 1024 / 6; //mengubah nilai analog mejadi mV
-  phValue = 3.5 * phValue;                   		//mengubah mV menjadi nilai pH
+  float phValue = (float)avgValue*5.0/1024/6; //mengubah nilai analog mejadi mV
+  phValue = 5*phValue;                   		//mengubah mV menjadi nilai pH
 
-  // pembacaan level air---------------------------------------------------------------------
+  // PEMBACAAN LEVEL AIR---------------------------------------------------------------------
   sensorValue = analogRead(waterLevel); // membaca tengan dari sensor dalam bentuk integer
   tinggiAir = sensorValue*4.0/1023;
   Serial.print("level air : ");Serial.println(tinggiAir);
@@ -347,7 +324,7 @@ void loop()
   }
     
   /******************************* PENGATURAN AKTUATOR ***********************************/
-  //pengaturan fan in--------------------------------------------------
+  //PENGATURAN FAN IN--------------------------------------------------
   if ((dht.temperature_C > (suhuIn + 0.3)) || (co2ppm < (co2In - 10)))
   {
     digitalWrite(relayFanIn, LOW);
@@ -361,7 +338,7 @@ void loop()
     Serial.println("fan in off");
   }
 
-  //pengaturan fan out--------------------------------------------------
+  //PENGATURAN FAN OUT--------------------------------------------------
   if ((co2ppm > (co2In + 10)) || (dht.humidity > (kelembabanIn + 0.5)))
   {
     digitalWrite(relayFanOut, LOW);
@@ -375,8 +352,8 @@ void loop()
     Serial.println("fan out off");
   }
 
-//  pengaturan heater----------------------------------------------------
-  if ((dht.temperature_C < (suhuIn - 0.3)) || (dht.humidity > (kelembabanIn + 0.5)))
+//  PENGATURAN HEATER----------------------------------------------------
+  if ((dht.temperature_C < (suhuIn - 0.3)) || (dht.humidity > (kelembabanIn + 10)))
   {
     digitalWrite(relayHeater, LOW);
     stateHeater = "on";
@@ -389,8 +366,22 @@ void loop()
     Serial.println("heater off");
   }
 
-  //pengaturan humidifier------------------------------------------------
-  if ((dht.temperature_C > (suhuIn + 0.3)) || (dht.humidity < (kelembabanIn - 0.5)))
+  //PENGATURAN PELTIER------------------------------------------------
+  if (dht.temperature_C > (suhuIn + 0.3))
+  {
+    digitalWrite(relayPeltier, LOW);
+    statePeltier = "on";
+    Serial.println("peltier on");
+  }
+  else
+  {
+    digitalWrite(relayPeltier, HIGH);
+    statePeltier = "off";
+    Serial.println("peltier off");
+  }
+  
+  //PENGATURAN HUMIDIFIER------------------------------------------------
+  if ((dht.humidity < (kelembabanIn - 0.5)) || (dht.temperature_C > (suhuIn + 0.3)))
   {
     digitalWrite(relayHumidifier, LOW);
     stateHumidifier = "on";
@@ -403,131 +394,74 @@ void loop()
     Serial.println("humidifier off");
   }
 
-  //pengaturan LED----------------------------------------------------------
+  //PENGATURAN LED----------------------------------------------------------
 
-   stateLED = "on";
-  Serial.print("LED nyala : ");
-  if ((lux < (intensitasIn - 5)) && (bright < 251))
+  // rentang nyala dalam sehari
+  if ((unsigned long)(currentMillis - previousLED) <= (unsigned long)(penyinaranIn))
   {
-    bright = bright + 5;
-    Serial.println("LED fading in");
+    digitalWrite(relayLED,LOW);
+    bright = 255;
+    analogWrite(LED, bright);
+    stateLED = "on";
+    Serial.print("LED nyala : ");
+    if ((lux < (intensitasIn - 5)) && (bright < 251))
+    {
+      bright = bright + 5;
+      Serial.println("LED fading in");
+    }
+    else if ((lux > (intensitasIn + 5)) && (bright > 4))
+    {
+      bright = bright - 5;
+      Serial.println("LED fading out");
+    }
+    else
+    {
+      Serial.print("PWM = ");Serial.println(bright);
+    }
+    analogWrite(LED, bright);
   }
-  else if ((lux > (intensitasIn + 5)) && (bright > 4))
-  {
-    bright = bright - 5;
-    Serial.println("LED fading out");
-  }
-  else
-  {
-    Serial.print("PWM = ");Serial.println(bright);
-  }
-  analogWrite(LED, bright);
-  
-//  if ((unsigned long)(currentMillis - previousLED) <= (unsigned long)(penyinaranIn))
-//  {
-//    stateLED = 'on';
-//    Serial.print("LED nyala : ");
-//    if ((lux < (intensitasIn - 5)) && (bright < 251))
-//    {
-//      bright = bright + 5;
-//      Serial.println("LED fading in");
-//    }
-//    else if ((lux > (intensitasIn + 5)) && (bright > 4))
-//    {
-//      bright = bright - 5;
-//      Serial.println("LED fading out");
-//    }
-//    else
-//    {
-//      Serial.print("PWM = ");Serial.println(bright);
-//    }
-//    analogWrite(LED, bright);
-//  }
-//
-//  if (((unsigned long)(currentMillis - previousLED) > (unsigned long)(penyinaranIn)) && ((unsigned long)(currentMillis - previousLED) <= satuHari))
-//  {
-//    analogWrite(LED, 0);
-//    stateLED = 'off';
-//    Serial.println("LED mati");
-//  }
-//
-//  if (((unsigned long)(currentMillis - previousLED) > (unsigned long)(penyinaranIn)) && ((unsigned long)(currentMillis - previousLED) > satuHari))
-//  {
-//    previousLED = millis();
-//    //Serial.println(previousLED);
-//  }
 
-// pengambilan foto
+  // rentang mati dalam sehari
+  if (((unsigned long)(currentMillis - previousLED) > (unsigned long)(penyinaranIn)) && ((unsigned long)(currentMillis - previousLED) <= satuHari))
+  {
+    digitalWrite(relayLED, HIGH);
+    analogWrite(LED, 0);
+    stateLED = "off";
+    Serial.println("LED mati");
+  }
+
+  // setelah lewat satu hari
+  if (((unsigned long)(currentMillis - previousLED) > (unsigned long)(penyinaranIn)) && ((unsigned long)(currentMillis - previousLED) > satuHari))
+  {
+    previousLED = millis();
+    //Serial.println(previousLED);
+  }
+
+// PENGAMBILAN FOTO TANAMAN----------------------------------------------------
   while (Serial.available() > 0)
   {
     Serial.read();
-    digitalWrite(LED, 0);
+    analogWrite(LED, 0);
+    digitalWrite(relayLED, HIGH);
     digitalWrite(ledPutih, LOW);
     delay(120000);
     analogWrite(LED, bright);
+    digitalWrite(relayLED, LOW);
     digitalWrite(ledPutih, HIGH);
   }
    
-  
-  //pengaturan pompa asam------------------------------------------------------
-  if (phValue > (phIn + 1))
-  {
-    digitalWrite(pumpAc, LOW);
-    Serial.println("pompa asam on");
-    delay(500);
-    digitalWrite(pumpAc, HIGH);
-  }
-  
-//  //pengaturan pompa basa-----------------------------------------------------
-//  if (phValue < (phIn - 1))
-//  {
-//    digitalWrite(pumpBa, LOW);
-//    Serial.println("pompa basa on");
-//    delay(500);
-//    digitalWrite(pumpBa, HIGH);
-//  }
-  
-  //pengaturan pompa larutan A-------------------------------------------------
+  //PENGATURAN POMPA LARUTAN-------------------------------------------------
   if (ECcurrent < (nutrisiIn - 0.5))
   {
-    digitalWrite(pumpAc, LOW);
-    Serial.println("pompa A on");
+    digitalWrite(relayPumpAB, LOW);
+    statePumpAB = "on";
+    Serial.println("pompa larutan A dan B on");
     delay(500);
-    digitalWrite(pumpAc, HIGH);
+    digitalWrite(relayPumpAB, HIGH);
+    statePumpAB = "off";
   }
-//  //pengaturan pompa larutan B-------------------------------------------------
-//  if (ECcurrent < (nutrisiIn - 0.5))
-//  {
-//    digitalWrite(pumpBa, LOW);
-//    Serial.println("pompa B on");
-//    delay(500);
-//    digitalWrite(pumpBa, HIGH);
-//  }
-
-  //pengaturan pompa nutrisi ----------------------------------------------------
-    digitalWrite(pumpBa, LOW);
-    statePump = "on";
-  
-  //pengaturan pompa flush ----------------------------------------------------
-    digitalWrite(pumpFlush, LOW);
-    statePumpFlush = "on";
-    
-  //pengaturan pompa nutrisi---------------------------------------------------
-//  statePump = 'off';
-//  if ((unsigned long)(currentMillis - previousMillis) >= (unsigned long)(waktusiramIn))
-//  {
-//    digitalWrite(relayPump, LOW);
-//    statePump = 'on';
-//    Serial.println("Pompa Aktif");
-//    delay (20000);
-//    Serial.print("durasipenyiraman : "); Serial.println("10 detik");
-//    digitalWrite(relayPump, HIGH);
-//    Serial.println("Pompa Mati");
-//    previousMillis = millis();
-//    Serial.print("previousMillis : "); Serial.println(previousMillis);
-//  }
-  
-  // mengubah integer ke string untuk dikirim menggunakan serial--------------------
+      
+  // MENGUBAH INTEGER KE STRING UNTUK DIKIRIM SERIAL--------------------
   kondisiSuhu = dht.temperature_C;
   kondisiKelembaban = dht.humidity;
   kondisiAktual = kondisiSuhu + ' ' + kondisiKelembaban + ' ' + co2ppm + ' ';
@@ -540,8 +474,8 @@ void loop()
   kondisiAktual = kondisiAktual + stateFanIn + ' ';
   kondisiAktual = kondisiAktual + stateFanOut + ' ';
   kondisiAktual = kondisiAktual + stateLED + ' ';
-  kondisiAktual = kondisiAktual + statePump + ' ';
-  kondisiAktual = kondisiAktual + statePumpFlush + ' ';
+  kondisiAktual = kondisiAktual + statePumpAB + ' ';
+  kondisiAktual = kondisiAktual + statePeltier + ' ';
   kondisiAktual = kondisiAktual + levelAir;
   Serial3.println(kondisiAktual);
   Serial.print("mengirim data serial : \t");
